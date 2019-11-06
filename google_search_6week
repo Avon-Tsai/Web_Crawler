@@ -1,0 +1,138 @@
+#!/usr/bin/python3
+
+# 6週 為一個週期
+
+# -*- coding: utf-8 -*-
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
+import time
+import urllib
+import sys
+import re
+from selenium import webdriver
+import urllib.parse
+from selenium.webdriver.chrome.options import Options
+import os
+
+import mysql.connector
+import socket
+import traceback
+import datetime
+import datetime
+from datetime import timedelta
+from selenium.webdriver.support.ui import WebDriverWait 
+from selenium.webdriver.support import expected_conditions as EC 
+from selenium.webdriver.common.by import By
+from bs4 import BeautifulSoup
+
+cnx = mysql.connector.connect(user, password, host, port, database, charset='utf8',raise_on_warnings= True)
+
+def save_data(data):
+    global cnx
+    cursor = cnx.cursor()
+    sql = "insert into Avon.googleresult_6week_cosmetic(begindate,enddate,keyword,numresult) values(%(begindate)s,%(enddate)s,%(keyword)s,%(numresult)s) "
+
+    try:
+        print(data) 
+        cursor.execute(sql,data)
+        cnx.commit()
+    except:
+        print('exception')
+        traceback.print_exc()
+
+
+def get_progress(query): #目前爬到哪一個日期
+    global cnx
+    cursor = cnx.cursor()
+    sql = "select min(begindate) from Avon.googleresult_6week_cosmetic where keyword=\""+query+"\"  "
+	
+    print(sql)
+    resultdt=datetime.datetime.strptime("2018-09-15","%Y-%m-%d").date()
+
+    try:
+        cursor.execute(sql)
+        for u in cursor:
+            resultdt=u[0]
+    except: 
+        print('exception')
+        traceback.print_exc()
+    return resultdt
+
+driver = webdriver.Chrome('chromedriver.exe')   
+
+def process_page(driver):
+    html = driver.page_source
+    soup = BeautifulSoup(html,"lxml")
+    
+    elmt=soup.find('div',{'id':'resultStats'})
+    print(elmt.text)
+    sresult=re.search(u'約有 (.+) 項結果',elmt.text)
+    if sresult is None:
+        sresult=re.search(u'(.+) 項結果',elmt.text)
+    print(sresult)
+    print(sresult.group(1))
+    return sresult.group(1).replace(",","")
+
+def get_prevweek(dt):
+    ed=dt.strftime("%m/%d/%Y").replace("/","%2F")
+    if dt == datetime.datetime.strptime("2016-11-12","%Y-%m-%d").date():
+        dt=dt+timedelta(days=-34)
+    else :
+        dt=dt+timedelta(days=-41) #+41
+    bg=dt.strftime("%m/%d/%Y").replace("/","%2F")
+    return (bg,ed)
+
+def mysearch(dt,query):
+    global enddate
+    global driver
+    bg,ed=get_prevweek(dt)
+    fullurl='https://www.google.com.tw/search?rlz=1C1CHZL_enTW725TW725&biw=1243&bih=666&tbs=cdr%3A1%2Ccd_min%3A'+bg+'%2Ccd_max%3A'+ed+'&ei=DLJKWqXSLoaA8QXv9LagCg&q='+query+'&oq='+query    
+	
+    print(fullurl)
+    driver.get(fullurl)
+    try:
+        #搜尋結果為 0 的時候ww這一行會 timeout error, 所以做 except 例外處理,給值:0
+        ww = WebDriverWait(driver,12).until(EC.presence_of_element_located((By.XPATH, "//div[@id='resultStats'][string-length(text()) > 1]")))
+        numresult=process_page(driver)
+    except:
+        numresult=0
+    print(dt)
+    if dt == datetime.datetime.strptime("2016-11-12","%Y-%m-%d").date() :
+        save_data({'begindate':dt+timedelta(days=-34),'enddate':dt,'keyword':query,'numresult':int(numresult)})
+    else :
+        save_data({'begindate':dt+timedelta(days=-41),'enddate':dt,'keyword':query,'numresult':int(numresult)})
+    time.sleep(2)
+
+enddate=datetime.datetime.strptime("2015-01-18","%Y-%m-%d")
+n=datetime.datetime.strptime("2018-03-31","%Y-%m-%d")
+
+result=['스린야시장','신베이시 크리스마스','대만 맥주']
+#result=['펑리수   site:naver.com','흑진주팩  site:naver.com','달리 치약 site:naver.com','화장품 통 밀크티  site:naver.com','3시 15분 밀크티  site:naver.com','고량주  site:naver.com','우롱차  site:naver.com']
+#result=['Ms. COSMED 斜角微整刷104','Ms. COSMED 斜頭腮紅刷102','Media 媚點 零瑕美肌粧前乳(橘)','Media 媚點 持效控油粧前乳','L`OREAL PARiS 巴黎萊雅 金緻護髮精油玫瑰精華','THE FACE SHOP 菲詩小舖 肌本博士舒敏修護鹽霜','SK-II 超輕感全效防曬霜','SK-II 夜間修護賦活面膜','KATE 凱婷 幻色持久唇釉N','KATE 凱婷 零瑕肌密微霧粉底液','SK-II 青春露','SK-II R.N.A. 超肌能緊緻大眼霜','KATE 凱婷 微熏光暈眼影盒','Za 粧自然無瑕粉餅','DIOR 迪奧 粉漾潤唇膏','SK-II R.N.A.超肌能緊緻彈力精萃','KATE 凱婷 密影氣墊眼線筆','TSUBAKI 思波綺 金耀瞬護髮膜','KATE 凱婷 3D棕影立體眼影盒N','KATE 凱婷 高顯色映象唇膏']
+
+'''
+cursor = cnx.cursor()
+sql="SELECT o.name, o.asCat FROM gsearch.search_list s, oneil.urcosme_prod_brand_google_segment o where s.id % 6 = 4 and o.brandid=s.pixid order by rand();"
+cursor.execute(sql)
+result=[]
+for u in cursor:   # 把要跑的keyword存到result list
+    q = u[0] + "+" + u[1]
+    if ("L'OCCITANE" not in q):
+        result.append(q)
+'''
+
+for query in result:  
+    n=get_progress(query)
+    if n is None:
+        n=datetime.datetime.strptime("2018-09-15","%Y-%m-%d").date() # 2017-10-15
+    
+    while n >= enddate.date(): 
+        mysearch(n,query)
+        if n == datetime.datetime.strptime("2016-11-12","%Y-%m-%d").date() : 
+            n=n+timedelta(days=-35)
+        else :
+            n=n+timedelta(days=-42)
+   
+driver.close()
+exit(1)
